@@ -1,18 +1,9 @@
-[
-  {
-    "ParameterKey": "BucketBaseName",
-    "ParameterValue": "cfn-bucket"
-  },
-  {
-    "ParameterKey": "ProjectName",
-    "ParameterValue": "myproject"
-  },
-  {
-    "ParameterKey": "environment",
-    "ParameterValue": "devl"
-  },
-  {
-    "ParameterKey": "CiSuffix",
-    "ParameterValue": ""
-  }
-]
+{
+  "NestedStacksS3BucketName": "subhamay-cfn-templates-bucket-270453428528-us-east-1",
+  "ProjectName": "rekognition",
+  "BucketBaseName": "image-labels",
+  "Environment": "devl",
+  "KmsKey": "SB-KMS",
+  "EnableBucketKey": "false",
+  "CiSuffix": ""
+}
