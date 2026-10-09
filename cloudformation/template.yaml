@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
-Description: 'Root CloudFormation template that invokes a nested S3 bucket stack'
+Description: 'Root CloudFormation template that invokes a nested stack to create a versioned S3 bucket with public access blocked and optional KMS encryption'
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -33,16 +33,17 @@ Metadata:
         default: "Bucket Base Name"
       Environment:
         default: "Environment"
-      CiSuffix:
-        default: "CI Suffix"
       KmsKey:
         default: "KMS Key (ARN / Alias)"
       EnableBucketKey:
         default: "Enable S3 Bucket Key"
+      CiSuffix:
+        default: "CI Suffix"
 
 Parameters:
   NestedStacksS3BucketName:
     Type: String
+    Default: "subhamay-cfn-templates-bucket-270453428528-us-east-1"
     Description: "S3 bucket name where the nested CloudFormation template is stored"
     MinLength: 3
     MaxLength: 63
@@ -51,6 +52,7 @@ Parameters:
 
   ProjectName:
     Type: String
+    Default: "proj-ztc"
     Description: "Project name to use as a bucket prefix"
     MinLength: 1
     MaxLength: 20
@@ -59,7 +61,7 @@ Parameters:
 
   BucketBaseName:
     Type: String
-    Default: cfn-bucket
+    Default: "image-labels"
     MinLength: 1
     MaxLength: 20
     AllowedPattern: "^[a-z0-9.-]+$"
@@ -68,7 +70,7 @@ Parameters:
 
   KmsKey:
     Type: String
-    Default: ""
+    Default: "SB-KMS"
     AllowedPattern: "^(alias/[a-zA-Z0-9_-]+|arn:aws:kms:[a-z0-9-]+:[0-9]+:key/[a-zA-Z0-9-]+|[a-zA-Z0-9_-]+)?$"
     ConstraintDescription: "KMS Key can be a key name (e.g., my-key, auto-converted to alias/my-key), a KMS key alias (e.g., alias/my-key), or a full KMS key ARN (e.g., arn:aws:kms:region:account:key/key-id), or leave empty for no KMS encryption"
     Description: "Optional KMS Key for S3 bucket encryption. Accepts: key name (my-key), alias (alias/my-key), or ARN (arn:aws:kms:region:account:key/key-id). Plain key names are auto-converted to aliases."
@@ -89,13 +91,13 @@ Parameters:
   CiSuffix:
     Type: String
     Default: ""
-    Description: "Optional CI prefix to append to the bucket name"
+    Description: "Optional CI suffix to append to the bucket name"
 
 Resources:
   S3BucketNestedStack:
     Type: AWS::CloudFormation::Stack
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Metadata:
       com.aws.cloudformation.Context:
         why: "Invokes the nested S3 bucket CloudFormation template to create a versioned, encrypted S3 bucket with public access blocking and optional logging/website configuration"
@@ -104,13 +106,14 @@ Resources:
           - "IAM principal must have s3:GetObject permission on the template S3 bucket"
           - "CloudFormation service must have permission to assume the required IAM role for S3 and KMS operations"
     Properties:
-      TemplateURL: !Sub "https://s3.${AWS::Region}.amazonaws.com/${NestedStacksS3BucketName}/cfn-nested-aws-s3-bucket/template.yaml"
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-s3-bucket/template.yaml"
       Parameters:
         ProjectName: !Ref ProjectName
         BucketBaseName: !Ref BucketBaseName
         KmsKey: !Ref KmsKey
         EnableBucketKey: !Ref EnableBucketKey
         Environment: !Ref Environment
+        WebsiteConfiguration: "true"
         CiSuffix: !Ref CiSuffix
       Tags:
         - Key: ManagedBy
