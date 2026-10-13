@@ -1,6 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
-Description: 'Root CloudFormation template that invokes a nested stack to create a versioned S3 bucket with public access blocked and optional KMS encryption'
+Description: >-
+  Root CloudFormation template for the image labels generator using Amazon Rekognition. Creates:
+   - S3 bucket with versioning enabled, public access blocked, and optional KMS encryption
 
 Metadata:
   AWS::CloudFormation::Interface:
