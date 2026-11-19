@@ -13,7 +13,7 @@
 [![Files](https://img.shields.io/github/directory-file-count/subhamay-bhattacharyya/aws-image-labels-generator)](https://github.com/subhamay-bhattacharyya/aws-image-labels-generator)&nbsp;[![Repo Size](https://img.shields.io/github/repo-size/subhamay-bhattacharyya/aws-image-labels-generator)](https://github.com/subhamay-bhattacharyya/aws-image-labels-generator)&nbsp;[![Release Date](https://img.shields.io/github/release-date/subhamay-bhattacharyya/aws-image-labels-generator)](https://github.com/subhamay-bhattacharyya/aws-image-labels-generator/releases)
 
 <!-- Row 5: Custom Metrics -->
-[![Custom Endpoint](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bsubhamay/52393fb36dc28479957fbb381dda208a/raw/aws-image-labels-generator.json)](https://gist.github.com/subhamay-bhattacharyya/52393fb36dc28479957fbb381dda208a)
+[![Custom Endpoint](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bsubhamay/a43a6bf8f83129504e07a70feeb55e8a/raw/aws-image-labels-generator.json)](https://gist.github.com/subhamay-bhattacharyya/a43a6bf8f83129504e07a70feeb55e8a)
 
 This repository contains nested CloudFormation templates for deploying S3 buckets with security best practices and optional policy enforcement.
 
