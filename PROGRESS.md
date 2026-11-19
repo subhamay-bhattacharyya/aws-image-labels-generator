@@ -2,11 +2,14 @@
 
 ## Completed ✅
 
-- [x] AWS S3
-- [x] Amazon DynamoDB
-- [x] IAM Roles & Policies
+- [x] S3 bucket
+- [x] SQS Queue
+- [x] CloudWatch Log Group
+- [x] Lambda IAM Role
+- [x] Lambda Function
+- [x] DynamoDB Table
+- [x] Lambda Package
 
 ## Pending 🏗️
 
-- [ ] AWS Lambda
-- [ ] AWS S3 Event Notification
+- [ ] None
