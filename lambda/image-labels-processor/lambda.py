@@ -6,12 +6,20 @@ Runtime:     Python 3.x (standard library only, no third-party dependencies)
 """
 
 import json
+import os
+from decimal import Decimal
+
 import boto3
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from boto3.dynamodb.types import TypeSerializer
 from PIL import Image
 from io import BytesIO
 from structured_logging import inject_lambda_context, logger
+
+_environment = json.loads(os.environ["CUSTOM"])
+DYNAMODB_TABLE_NAME = _environment["DYNAMODB_TABLE_NAME"]
+_type_serializer = TypeSerializer()
 
 
 def _response(status_code: int, body: dict) -> dict:
@@ -21,6 +29,31 @@ def _response(status_code: int, body: dict) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body),
     }
+
+
+def _to_decimal(value):
+    """DynamoDB rejects Python floats, so convert them to Decimal recursively."""
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {k: _to_decimal(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_decimal(v) for v in value]
+    return value
+
+
+def serialize_dynamodb_item(item: dict) -> dict:
+    """Convert a Python dict into DynamoDB attribute-value format, e.g. {"S": "..."}."""
+    return {k: _type_serializer.serialize(_to_decimal(v)) for k, v in item.items()}
+
+
+def put_dynamodb_item(item: dict) -> None:
+    """Serialize the item and write it to the Image-labels DynamoDB table."""
+    dynamodb = boto3.client("dynamodb")
+    dynamodb.put_item(
+        TableName=DYNAMODB_TABLE_NAME,
+        Item=serialize_dynamodb_item(item),
+    )
 
 
 def detect_labels(photo, bucket):
@@ -35,12 +68,15 @@ def detect_labels(photo, bucket):
     )
 
     # Log detected labels
-    logger.info("Detected labels", extra={"photo": photo, "bucket": bucket})
+    # logger.info("Detected labels", extra={"photo": photo, "bucket": bucket})
+    labels = []
     for label in response["Labels"]:
-        logger.info(
-            "Label detected",
-            extra={"label": label["Name"], "confidence": label["Confidence"]},
-        )
+        labels.append({"label": label["Name"], "confidence": label["Confidence"]})
+
+    logger.info(
+        "Label detected",
+        extra={"labelCount": len(labels), "labels": labels},
+    )
 
     # Load the image from S3
     s3 = boto3.resource("s3")
@@ -62,7 +98,9 @@ def detect_labels(photo, bucket):
                 (left, top), width, height, linewidth=1, edgecolor="r", facecolor="none"
             )
             ax.add_patch(rect)
-            label_text = label["Name"] + " (" + str(round(label["Confidence"], 2)) + "%)"
+            label_text = (
+                label["Name"] + " (" + str(round(label["Confidence"], 2)) + "%)"
+            )
             plt.text(
                 left,
                 top - 2,
@@ -73,7 +111,7 @@ def detect_labels(photo, bucket):
             )
     plt.show()
 
-    return len(response["Labels"])
+    return {"labelsCount": len(labels), "labels": labels}
 
 
 @inject_lambda_context
@@ -88,9 +126,10 @@ def handler(event, context):
     Returns:
         A dict. Shape depends on the trigger; this returns a generic result.
     """
-    logger.info("Received event", extra={"event": event})
+    # logger.info("Received event", extra={"event": event})
 
     try:
+        # ---- Your business logic goes here ----
         for record in event["Records"]:
             body = record["body"]
             # The SQS body is a JSON string containing the S3 notification
@@ -100,14 +139,24 @@ def handler(event, context):
             for s3_record in body["Records"]:
                 bucket = s3_record["s3"]["bucket"]["name"]
                 key = s3_record["s3"]["object"]["key"]
-                logger.info("S3 object received", extra={"bucket": bucket, "key": key})
+                e_tag = s3_record["s3"]["object"]["eTag"]
+                version_id = s3_record["s3"]["object"]["versionId"]
+                size = s3_record["s3"]["object"]["size"]
+                event_time = s3_record["eventTime"]
+                dynamodb_item = dict(
+                    eTag=e_tag,
+                    versionId=version_id,
+                    bucketName=bucket,
+                    objectKey=key,
+                    size=size,
+                    eventTime=event_time,
+                )
 
-                label_count = detect_labels(key, bucket)
-                logger.info("Labels detected", extra={"label_count": label_count, "key": key})
+                labels = detect_labels(key, bucket)
+                item = {**dynamodb_item, **labels}
+                put_dynamodb_item(item)
 
-        # ---- Your business logic goes here ----
-        logger.info("Repo synced", extra={"repo": "owner/name", "count": 3})
-        result = {"message": "Hello from Lambda!", "request_id": context.aws_request_id}
+        result = {"message": "Labels detected!", "request_id": context.aws_request_id}
         # ---------------------------------------
 
         return _response(200, result)

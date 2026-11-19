@@ -1,19 +1,23 @@
 name: CI Build Workflow
-description: CI Build Workflow for CloudFormation VPC Subnet Stack run by {{ github.actor }}
+description: CI Build Workflow for Image Labels Generator Stack run by {{ github.actor }}
 
 on:
   workflow_dispatch:
   # push:
   #   branches:
+  #     - main
   #     - feature/**
   #     - bug/**
   #   paths:
   #     - 'cloudformation/**'
+  #     - 'lambda/image-labels-processor/**'
   #     - .github/workflows/ci.yaml
   # pull_request:
   #   branches: [main]
   #   paths:
   #     - 'cloudformation/**'
+  #     - 'lambda/image-labels-processor/**'
+  #     - .github/workflows/ci.yaml
 
 permissions:
   actions: write
