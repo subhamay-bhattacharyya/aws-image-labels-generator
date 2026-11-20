@@ -167,7 +167,7 @@ Parameters:
 
   SQSVisibilityTimeout:
     Type: Number
-    Default: 360
+    Default: 30
     MinValue: 0
     MaxValue: 43200
     Description: "Visibility timeout in seconds for the SQS queue. Must be at least the Lambda timeout (60s) so messages are not redelivered while being processed."

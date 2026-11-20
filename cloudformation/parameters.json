@@ -1,6 +1,6 @@
 {
   "NestedStacksS3BucketName": "subhamay-cfn-templates-bucket-270453428528-us-east-1",
-  "ProjectName": "rekognition",
+  "ProjectName": "ztc-proj",
   "BucketBaseName": "image-labels",
   "Environment": "devl",
   "KmsKey": "SB-KMS",
