@@ -17,20 +17,17 @@ Metadata:
           - ProjectName
           - BucketBaseName
           - Environment
+          - EnableBucketKey
       - Label:
           default: "Encryption Configuration"
         Parameters:
           - KmsKey
-          - EnableBucketKey
+          - KmsKeyArn
       - Label:
           default: "Lambda Configuration"
         Parameters:
           - LambdaBaseName
           - LambdaRoleBaseName
-      - Label:
-          default: "Logging Configuration"
-        Parameters:
-          - CWLogGroupKmsKey
       - Label:
           default: "SQS Queue Configuration"
         Parameters:
@@ -57,6 +54,8 @@ Metadata:
         default: "Environment"
       KmsKey:
         default: "KMS Key (ARN / Alias)"
+      KmsKeyArn:
+        default: "KMS Key ARN"
       EnableBucketKey:
         default: "Enable S3 Bucket Key"
       CiSuffix:
@@ -65,8 +64,6 @@ Metadata:
         default: "Lambda Base Name"
       LambdaRoleBaseName:
         default: "Lambda Execution Role Base Name"
-      CWLogGroupKmsKey:
-        default: "CloudWatch Logs KMS Key (ARN / Alias)"
       SQSQueueBaseName:
         default: "SQS Queue Base Name"
       SQSVisibilityTimeout:
@@ -113,6 +110,13 @@ Parameters:
     ConstraintDescription: "KMS Key can be a key name (e.g., my-key, auto-converted to alias/my-key), a KMS key alias (e.g., alias/my-key), or a full KMS key ARN (e.g., arn:aws:kms:region:account:key/key-id), or leave empty for no KMS encryption"
     Description: "Optional KMS Key for S3 bucket encryption. Accepts: key name (my-key), alias (alias/my-key), or ARN (arn:aws:kms:region:account:key/key-id). Plain key names are auto-converted to aliases."
 
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:269235677084:key/e691f177-0403-4b15-b9a7-50b57b204140"
+    AllowedPattern: "^(alias/[a-zA-Z0-9_-]+|arn:aws:kms:[a-z0-9-]+:[0-9]+:key/[a-zA-Z0-9-]+|[a-zA-Z0-9_-]+)?$"
+    ConstraintDescription: "CloudWatch Logs KMS Key can be a key name (auto-converted to alias/<name>), a KMS key alias (alias/my-key), a full KMS key ARN, or left empty for no KMS encryption"
+    Description: "Optional KMS key for encrypting the Lambda CloudWatch Logs log group. Leave empty for no KMS encryption."
+
   EnableBucketKey:
     Type: String
     Default: "false"
@@ -149,13 +153,6 @@ Parameters:
     ConstraintDescription: "Lambda execution role base name must be 1-64 characters and can only contain letters, numbers, hyphens, and underscores"
     Description: "Base name for the Lambda execution IAM role"
 
-  CWLogGroupKmsKey:
-    Type: String
-    Default: "arn:aws:kms:us-east-1:269235677084:key/e691f177-0403-4b15-b9a7-50b57b204140"
-    AllowedPattern: "^(alias/[a-zA-Z0-9_-]+|arn:aws:kms:[a-z0-9-]+:[0-9]+:key/[a-zA-Z0-9-]+|[a-zA-Z0-9_-]+)?$"
-    ConstraintDescription: "CloudWatch Logs KMS Key can be a key name (auto-converted to alias/<name>), a KMS key alias (alias/my-key), a full KMS key ARN, or left empty for no KMS encryption"
-    Description: "Optional KMS key for encrypting the Lambda CloudWatch Logs log group. Leave empty for no KMS encryption."
-
   SQSQueueBaseName:
     Type: String
     Default: "image-labels-queue"
@@ -167,7 +164,7 @@ Parameters:
 
   SQSVisibilityTimeout:
     Type: Number
-    Default: 30
+    Default: 120
     MinValue: 0
     MaxValue: 43200
     Description: "Visibility timeout in seconds for the SQS queue. Must be at least the Lambda timeout (60s) so messages are not redelivered while being processed."
@@ -199,7 +196,7 @@ Parameters:
 
 Conditions:
   HasCiSuffix: !Not [!Equals [!Ref CiSuffix, ""]]
-  HasCWLogGroupKmsKey: !Not [!Equals [!Ref CWLogGroupKmsKey, ""]]
+  HasCWLogGroupKmsKey: !Not [!Equals [!Ref KmsKeyArn, ""]]
   HasKmsKey: !Not [!Equals [!Ref KmsKey, ""]]
 
 Resources:
@@ -326,7 +323,7 @@ Resources:
           - !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}-${CiSuffix}"
           - !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}"
         RetentionInDays: 14
-        KmsKeyIdOrAlias: !If [HasCWLogGroupKmsKey, !Ref CWLogGroupKmsKey, ""]
+        KmsKeyIdOrAlias: !If [HasCWLogGroupKmsKey, !Ref KmsKeyArn, ""]
         Environment: !Ref Environment
         CiSuffix: !Ref CiSuffix
       Tags:
@@ -360,6 +357,7 @@ Resources:
         AssumeRolePrincipal: "lambda.amazonaws.com"
         EnableLambdaBasicExecutionPolicy: "true"
         EnableKMSPolicy: "true"
+        KMSKeyArn: !Ref KmsKeyArn
         EnableSQSPolicy: "true"
         EnableRekognitionPolicy: "true"
         EnableDynamoDBReadWritePolicy: "true"
