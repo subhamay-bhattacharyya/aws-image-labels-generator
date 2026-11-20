@@ -1,10 +1,93 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
-Description: 'Nested CloudFormation template to create an S3 bucket with versioning and public access blocking'
+Description: >-
+  Root CloudFormation template for the image labels generator using Amazon Rekognition. Creates:
+   - S3 bucket with versioning enabled, public access blocked, and optional KMS encryption
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Nested Stack Configuration"
+        Parameters:
+          - NestedStacksS3BucketName
+      - Label:
+          default: "S3 Bucket Configuration"
+        Parameters:
+          - ProjectName
+          - BucketBaseName
+          - Environment
+          - EnableBucketKey
+      - Label:
+          default: "Encryption Configuration"
+        Parameters:
+          - KmsKey
+          - KmsKeyArn
+      - Label:
+          default: "Lambda Configuration"
+        Parameters:
+          - LambdaBaseName
+          - LambdaRoleBaseName
+      - Label:
+          default: "SQS Queue Configuration"
+        Parameters:
+          - SQSQueueBaseName
+          - SQSVisibilityTimeout
+      - Label:
+          default: "DynamoDB Configuration"
+        Parameters:
+          - TableBaseName
+          - BillingMode
+          - EnablePointInTimeRecovery
+      - Label:
+          default: "Advanced Configuration"
+        Parameters:
+          - CiSuffix
+    ParameterLabels:
+      NestedStacksS3BucketName:
+        default: "S3 Bucket Name"
+      ProjectName:
+        default: "Project Name"
+      BucketBaseName:
+        default: "Bucket Base Name"
+      Environment:
+        default: "Environment"
+      KmsKey:
+        default: "KMS Key (ARN / Alias)"
+      KmsKeyArn:
+        default: "KMS Key ARN"
+      EnableBucketKey:
+        default: "Enable S3 Bucket Key"
+      CiSuffix:
+        default: "CI Suffix"
+      LambdaBaseName:
+        default: "Lambda Base Name"
+      LambdaRoleBaseName:
+        default: "Lambda Execution Role Base Name"
+      SQSQueueBaseName:
+        default: "SQS Queue Base Name"
+      SQSVisibilityTimeout:
+        default: "SQS Visibility Timeout (seconds)"
+      TableBaseName:
+        default: "DynamoDB Table Base Name"
+      BillingMode:
+        default: "DynamoDB Billing Mode"
+      EnablePointInTimeRecovery:
+        default: "Enable DynamoDB Point-in-Time Recovery"
 
 Parameters:
+  NestedStacksS3BucketName:
+    Type: String
+    Default: "subhamay-cfn-templates-bucket-270453428528-us-east-1"
+    Description: "S3 bucket name where the nested CloudFormation template is stored"
+    MinLength: 3
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]*[a-z0-9]$"
+    ConstraintDescription: "S3 bucket name must be 3-63 characters, start and end with lowercase letter or number, and can contain hyphens and dots"
+
   ProjectName:
     Type: String
+    Default: "proj-ztc"
     Description: "Project name to use as a bucket prefix"
     MinLength: 1
     MaxLength: 20
@@ -13,10 +96,36 @@ Parameters:
 
   BucketBaseName:
     Type: String
-    Default: cfn-bucket
+    Default: "image-labels"
+    MinLength: 1
+    MaxLength: 20
+    AllowedPattern: "^[a-z0-9.-]+$"
+    ConstraintDescription: "Bucket base name must be 1-20 characters and can only contain lowercase letters, numbers, hyphens, and dots"
     Description: Base name for the S3 bucket (account ID, environment, and region will be appended)
 
-  environment:
+  KmsKey:
+    Type: String
+    Default: "SB-KMS"
+    AllowedPattern: "^(alias/[a-zA-Z0-9_-]+|arn:aws:kms:[a-z0-9-]+:[0-9]+:key/[a-zA-Z0-9-]+|[a-zA-Z0-9_-]+)?$"
+    ConstraintDescription: "KMS Key can be a key name (e.g., my-key, auto-converted to alias/my-key), a KMS key alias (e.g., alias/my-key), or a full KMS key ARN (e.g., arn:aws:kms:region:account:key/key-id), or leave empty for no KMS encryption"
+    Description: "Optional KMS Key for S3 bucket encryption. Accepts: key name (my-key), alias (alias/my-key), or ARN (arn:aws:kms:region:account:key/key-id). Plain key names are auto-converted to aliases."
+
+  KmsKeyArn:
+    Type: String
+    Default: "arn:aws:kms:us-east-1:269235677084:key/e691f177-0403-4b15-b9a7-50b57b204140"
+    AllowedPattern: "^(alias/[a-zA-Z0-9_-]+|arn:aws:kms:[a-z0-9-]+:[0-9]+:key/[a-zA-Z0-9-]+|[a-zA-Z0-9_-]+)?$"
+    ConstraintDescription: "CloudWatch Logs KMS Key can be a key name (auto-converted to alias/<name>), a KMS key alias (alias/my-key), a full KMS key ARN, or left empty for no KMS encryption"
+    Description: "Optional KMS key for encrypting the Lambda CloudWatch Logs log group. Leave empty for no KMS encryption."
+
+  EnableBucketKey:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: "Enable S3 Bucket Key for KMS encryption cost optimization (only applicable when KmsKey is provided)"
+
+  Environment:
     Type: String
     Default: devl
     Description: "Deployment environment for the S3 bucket"
@@ -24,36 +133,356 @@ Parameters:
   CiSuffix:
     Type: String
     Default: ""
-    Description: "Optional CI prefix to append to the bucket name"
+    Description: "Optional CI suffix to append to the bucket name"
+
+  LambdaBaseName:
+    Type: String
+    Default: "image-labels-processor"
+    MinLength: 1
+    MaxLength: 40
+    AllowedPattern: "^[a-zA-Z0-9_-]+$"
+    ConstraintDescription: "Lambda base name must be 1-40 characters and can only contain letters, numbers, hyphens, and underscores"
+    Description: "Base name for the Lambda function and its log group (project, environment, and region will be prefixed/appended)"
+
+  LambdaRoleBaseName:
+    Type: String
+    Default: "image-labels-lambda-role"
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: "^[a-zA-Z0-9_-]+$"
+    ConstraintDescription: "Lambda execution role base name must be 1-64 characters and can only contain letters, numbers, hyphens, and underscores"
+    Description: "Base name for the Lambda execution IAM role"
+
+  SQSQueueBaseName:
+    Type: String
+    Default: "image-labels-queue"
+    MinLength: 1
+    MaxLength: 40
+    AllowedPattern: "^[a-zA-Z0-9_-]+$"
+    ConstraintDescription: "SQS queue base name must be 1-40 characters and can only contain letters, numbers, hyphens, and underscores"
+    Description: "Base name for the SQS queue that triggers the Lambda function (environment and region are appended)"
+
+  SQSVisibilityTimeout:
+    Type: Number
+    Default: 120
+    MinValue: 0
+    MaxValue: 43200
+    Description: "Visibility timeout in seconds for the SQS queue. Must be at least the Lambda timeout (60s) so messages are not redelivered while being processed."
+
+  TableBaseName:
+    Type: String
+    Default: "image-labels"
+    MinLength: 1
+    MaxLength: 40
+    AllowedPattern: "^[a-zA-Z0-9_-]+$"
+    ConstraintDescription: "DynamoDB table base name must be 1-40 characters and can only contain letters, numbers, hyphens, and underscores"
+    Description: "Base name for the DynamoDB table (project, environment, and region are included in the table name)"
+
+  BillingMode:
+    Type: String
+    Default: "PAY_PER_REQUEST"
+    AllowedValues:
+      - "PAY_PER_REQUEST"
+      - "PROVISIONED"
+    Description: "DynamoDB billing mode for the table"
+
+  EnablePointInTimeRecovery:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: "Enable DynamoDB point-in-time recovery for the table"
 
 Conditions:
   HasCiSuffix: !Not [!Equals [!Ref CiSuffix, ""]]
+  HasCWLogGroupKmsKey: !Not [!Equals [!Ref KmsKeyArn, ""]]
+  HasKmsKey: !Not [!Equals [!Ref KmsKey, ""]]
 
 Resources:
-  S3Bucket:
-    Type: AWS::S3::Bucket
+  SQSQueue:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "Invokes the nested SQS queue CloudFormation template to create the queue that triggers the Lambda function"
+        must:
+          - "Nested template must be accessible at the specified S3 location"
+          - "IAM principal must have s3:GetObject permission on the template S3 bucket"
+          - "CloudFormation service must have permission to create SQS queues and queue policies"
     Properties:
-      BucketName: !If
-        - HasCiSuffix
-        - !Sub '${ProjectName}-${BucketBaseName}-${AWS::AccountId}-${environment}-${AWS::Region}-${CiSuffix}'
-        - !Sub '${ProjectName}-${BucketBaseName}-${AWS::AccountId}-${environment}-${AWS::Region}'
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-sqs-queue/template.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        QueueBaseName: !Ref SQSQueueBaseName
+        Environment: !Ref Environment
+        CiSuffix: !Ref CiSuffix
+        QueueType: "Standard"
+        VisibilityTimeout: !Ref SQSVisibilityTimeout
+        S3BucketArn: 
+          !If
+            - HasCiSuffix
+            - !Sub 'arn:${AWS::Partition}:s3:::${ProjectName}-${BucketBaseName}-${AWS::AccountId}-${Environment}-${AWS::Region}-${CiSuffix}'
+            - !Sub 'arn:${AWS::Partition}:s3:::${ProjectName}-${BucketBaseName}-${AWS::AccountId}-${Environment}-${AWS::Region}'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Component
+          Value: SQSQueue
+        - Key: ManagedBy
+          Value: RootStack
+      TimeoutInMinutes: 5
+
+  DynamoDBTable:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "Invokes the nested DynamoDB CloudFormation template to create a Receipts table with event streams, encryption, and PITR enabled for event-driven receipt processing"
+        must:
+          - "Nested template must be accessible at the specified S3 location"
+          - "IAM principal must have s3:GetObject permission on the template S3 bucket"
+          - "CloudFormation service must have permission to create DynamoDB tables, streams, and KMS resources"
+    Properties:
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-dynamodb-table/template.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        TableBaseName: !Ref TableBaseName
+        Environment: !Ref Environment
+        BillingMode: !Ref BillingMode
+        PartitionKeyName: "eTag"
+        PartitionKeyType: "S"
+        SortKeyName: "versionId"
+        SortKeyType: "S"
+        EnablePointInTimeRecovery: !Ref EnablePointInTimeRecovery
+        KmsKey: !If [HasKmsKey, !Ref KmsKey, ""]
+        CiSuffix: !Ref CiSuffix
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Component
+          Value: Image Labels Database
+        - Key: ManagedBy
+          Value: RootStack
+      TimeoutInMinutes: 10
+
+  S3Bucket:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "Invokes the nested S3 bucket CloudFormation template to create a versioned, encrypted S3 bucket with public access blocking and optional logging/website configuration"
+        must:
+          - "Nested template must be accessible at the specified S3 location"
+          - "IAM principal must have s3:GetObject permission on the template S3 bucket"
+          - "CloudFormation service must have permission to assume the required IAM role for S3 and KMS operations"
+    Properties:
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-s3-bucket/template.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        BucketBaseName: !Ref BucketBaseName
+        KmsKey: !Ref KmsKey
+        EnableBucketKey: !Ref EnableBucketKey
+        Environment: !Ref Environment
+        WebsiteConfiguration: "false"
+        CiSuffix: !Ref CiSuffix
+        QueueArn: !GetAtt SQSQueue.Outputs.QueueArn
+        QueueEvent: "s3:ObjectCreated:*"
+        QueueFilterPrefix: "input-images/"
+        QueueFilterSuffix: ".jpg"
+      Tags:
+        - Key: ManagedBy
+          Value: RootStack
+        - Key: NestedStackPurpose
+          Value: S3BucketCreation
+
+  LambdaCWLogGroup:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "Invokes the nested CloudWatch Logs CloudFormation template to create a log group for Lambda functions"
+        must:
+          - "Nested template must be accessible at the specified S3 location"
+          - "IAM principal must have s3:GetObject permission on the template S3 bucket"
+          - "CloudFormation service must have permission to create CloudWatch Logs resources"
+    Properties:
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-cloudwatch-log-group/template.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        CustomLogGroupName: !If
+          - HasCiSuffix
+          - !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}-${CiSuffix}"
+          - !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}"
+        RetentionInDays: 14
+        KmsKeyIdOrAlias: !If [HasCWLogGroupKmsKey, !Ref KmsKeyArn, ""]
+        Environment: !Ref Environment
+        CiSuffix: !Ref CiSuffix
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Component
+          Value: LambdaLogGroup
+        - Key: ManagedBy
+          Value: RootStack
+      TimeoutInMinutes: 5
+
+  LambdaIAMRole:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "Invokes the nested IAM role CloudFormation template to create an execution role for Lambda functions with permissions for S3, DynamoDB, and CloudWatch Logs"
+        must:
+          - "Nested template must be accessible at the specified S3 location"
+          - "IAM principal must have s3:GetObject permission on the template S3 bucket"
+          - "CloudFormation service must have permission to create IAM roles and inline policies"
+    Properties:
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-iam-roles-policies/template.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        RoleName: !Ref LambdaRoleBaseName
+        Environment: !Ref Environment
+        AssumeRolePrincipal: "lambda.amazonaws.com"
+        EnableLambdaBasicExecutionPolicy: "true"
+        EnableKMSPolicy: "true"
+        KMSKeyArn: !Ref KmsKeyArn
+        EnableSQSPolicy: "true"
+        EnableRekognitionPolicy: "true"
+        EnableDynamoDBReadWritePolicy: "true"
+        EnableS3ReadOnlyPolicy: "true"
+        S3BucketArn: !GetAtt S3Bucket.Outputs.S3BucketArn
+        DynamoDBTableArn: !GetAtt DynamoDBTable.Outputs.TableArn
+        SQSQueueArn: !GetAtt SQSQueue.Outputs.QueueArn
+        LambdaBasicExecutionLogGroupArn: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}:*"
+        CiSuffix: !Ref CiSuffix
+
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Component
+          Value: LambdaExecutionRole
+        - Key: ManagedBy
+          Value: RootStack
+      TimeoutInMinutes: 5
+
+  LambdaFunction:
+    Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    DependsOn:
+      - LambdaCWLogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "Invokes the nested Lambda function CloudFormation template to create the receipt processor function using the IAM execution role, log group, and DynamoDB table created by the other nested stacks"
+        must:
+          - "Nested template must be accessible at the specified S3 location"
+          - "IAM principal must have s3:GetObject permission on the template S3 bucket"
+          - "CloudFormation service must have permission to create Lambda functions"
+    Properties:
+      TemplateURL: !Sub "https://${NestedStacksS3BucketName}.s3.us-east-1.amazonaws.com/cfn-nested-aws-lambda-function/template.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        LambdaFunctionBaseName: !Ref LambdaBaseName
+        Environment: !Ref Environment
+        Runtime: "python3.12"
+        Handler: "lambda.handler"
+        MemorySize: "256"
+        Timeout: "60"
+        IAMRoleArn: !GetAtt LambdaIAMRole.Outputs.RoleArn
+        LambdaLogGroup: !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}"
+        CiSuffix: !Ref CiSuffix
+        CreateSqsQueue: "false"
+        SqsQueueArn: !GetAtt SQSQueue.Outputs.QueueArn
+        SqsBatchSize: "10"
+        EnvironmentNameValue: !Ref Environment
+        CustomNameValue: !Sub |
+          {
+            "DYNAMODB_TABLE_NAME": "${DynamoDBTable.Outputs.TableName}"
+          }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Component
+          Value: LambdaFunction
+        - Key: ManagedBy
+          Value: RootStack
+      TimeoutInMinutes: 10
+
 
 Outputs:
-  S3BucketName:
-    Description: "Name of the S3 bucket"
+  NestedStackId:
+    Description: "ID of the nested stack"
     Value: !Ref S3Bucket
-    Export:
-      Name: !Sub "${AWS::StackName}-BucketName"
+
+  S3BucketName:
+    Description: "Name of the S3 bucket created by the nested stack"
+    Value: !GetAtt S3Bucket.Outputs.S3BucketName
 
   S3BucketArn:
-    Description: "ARN of the S3 bucket"
-    Value: !GetAtt S3Bucket.Arn
-    Export:
-      Name: !Sub "${AWS::StackName}-BucketArn"
+    Description: "ARN of the S3 bucket created by the nested stack"
+    Value: !GetAtt S3Bucket.Outputs.S3BucketArn
+
+  NestedStackOutputs:
+    Description: "All outputs from the nested stack"
+    Value: !Sub |
+      BucketName: ${S3Bucket.Outputs.S3BucketName}
+      BucketArn: ${S3Bucket.Outputs.S3BucketArn}
+
+  LambdaLogGroupStackId:
+    Description: "ID of the nested stack that creates the Lambda CloudWatch Logs log group"
+    Value: !Ref LambdaCWLogGroup
+
+  LambdaLogGroupName:
+    Description: "Name of the Lambda CloudWatch Logs log group"
+    Value: !If
+      - HasCiSuffix
+      - !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}-${CiSuffix}"
+      - !Sub "/aws/lambda/${ProjectName}-${LambdaBaseName}-${Environment}-${AWS::Region}"
+
+  LambdaRoleArn:
+    Description: "ARN of the Lambda execution IAM role created by the nested stack"
+    Value: !GetAtt LambdaIAMRole.Outputs.RoleArn
+
+  LambdaFunctionStackId:
+    Description: "ID of the nested stack that creates the Lambda function"
+    Value: !Ref LambdaFunction
+
+  SQSQueueStackId:
+    Description: "ID of the nested stack that creates the SQS queue"
+    Value: !Ref SQSQueue
+
+  SQSQueueUrl:
+    Description: "URL of the SQS queue"
+    Value: !GetAtt SQSQueue.Outputs.QueueUrl
+
+  SQSQueueArn:
+    Description: "ARN of the SQS queue"
+    Value: !GetAtt SQSQueue.Outputs.QueueArn
+
+  DynamoDBStackId:
+    Description: "ID of the nested stack that creates the DynamoDB table"
+    Value: !Ref DynamoDBTable
+
+  DynamoDBTableName:
+    Description: "Name of the DynamoDB table created by the nested stack"
+    Value: !GetAtt DynamoDBTable.Outputs.TableName
+
+  DynamoDBTableArn:
+    Description: "ARN of the DynamoDB table created by the nested stack"
+    Value: !GetAtt DynamoDBTable.Outputs.TableArn

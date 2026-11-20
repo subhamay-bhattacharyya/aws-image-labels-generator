@@ -1,18 +1,10 @@
-[
-  {
-    "ParameterKey": "BucketBaseName",
-    "ParameterValue": "cfn-bucket"
-  },
-  {
-    "ParameterKey": "ProjectName",
-    "ParameterValue": "myproject"
-  },
-  {
-    "ParameterKey": "environment",
-    "ParameterValue": "devl"
-  },
-  {
-    "ParameterKey": "CiSuffix",
-    "ParameterValue": ""
-  }
-]
+{
+  "NestedStacksS3BucketName": "subhamay-cfn-templates-bucket-270453428528-us-east-1",
+  "ProjectName": "ztc-proj",
+  "BucketBaseName": "image-labels",
+  "Environment": "devl",
+  "KmsKey": "SB-KMS",
+  "KmsKeyArn": "arn:aws:kms:us-east-1:269235677084:key/e691f177-0403-4b15-b9a7-50b57b204140",
+  "EnableBucketKey": "false",
+  "CiSuffix": ""
+}
